@@ -1,0 +1,126 @@
+#!/usr/bin/python
+
+"""
+File: dinphil (Dining Philosophers)
+Author: Michael Riesberg-Timmer
+Class: Operating systems CS 3430
+description: Use locks to solve dining philosophers problem
+Notes: I know there are a lot of commented out print lines. They are just something I had for the sake of visibly seeing if the program was working or not and they felt wrong to get rid of
+"""
+import sys
+from time import time
+from time import sleep
+import threading
+from threading import Thread
+from random import randint
+
+#global variables
+PHILOSOPHERS = list()
+FORKS = list()
+THINK_TO_EAT = 1
+LOCK = False
+
+#verify arguments
+if len(sys.argv)==1:
+    print("This program requires a positive integer argument")
+    print(sys.argv[0] + " integer")
+    exit()
+if len(sys.argv)>2:
+    print("This program only takes ONE positive integer argument")
+    print(sys.argv[0] + " integer")
+    exit()
+if len(sys.argv)==2:
+    if int(sys.argv[1])<=0:
+        print("This program requires a POSITIVE integer be used")
+        print(sys.argv[0] + " integer")
+
+#if we get here then all inputs are valid
+
+class philosopher:
+    def __init__(self,identity):
+        #I know it's wrong to give each philosopher a starting think time but it's much easier than writing code to avoid dividing by zero
+        #Could subtract 0.1 from thinking time before outputing to solve problem 
+        self.identity = identity
+        self.timeEating = 0.0
+        self.timeThinking = 0.1
+        self.left_fork = FORKS[self.identity]
+        self.right_fork = FORKS[(self.identity+1) % int(sys.argv[1])]
+
+    def eat(self):
+        #Sit here until all threads are  ready to run
+        while LOCK:
+            pass
+        while True:
+            startTime = time()
+            #HERE IS MY IMPLIMENTATION OF THINK_TO_EAT
+            #if time spend eating divided by time thinking is greater than one then we need to be thinking instead of eating
+            if (self.timeEating/self.timeThinking) > THINK_TO_EAT:
+                #print("Philosopher " + str(self.identity) + " is thinking")
+                compareTime = self.timeThinking
+                while compareTime < self.timeEating:
+                    endTime = time()
+                    compareTime += (endTime-startTime)
+                self.timeThinking = compareTime
+            #If we reach this else statement then we need to eat
+            else:
+                compareTime = self.timeEating
+                #nested with statements handle acquiring and releasing of locks where the critical section is the code under them
+                with self.left_fork:
+                    #This if else statement handles the situation where the philosohper picks up the left fork but the right fork isn't avaiable. If this is the case then they let go of the left fork.
+                    if not self.right_fork.locked():
+                        #print("Philosopher " + str(self.identity) + " picked up fork " + str(self.identity))
+                        with self.right_fork:
+                            #print("Philosopher " + str(self.identity) + " picked up fork " + str((self.identity+1) % int(sys.argv[1])))
+                            #print("Philosopher " + str(self.identity) + " is eating")
+                            while compareTime <= self.timeThinking:
+                                endTime = time()
+                                compareTime += (endTime-startTime)
+                            self.timeEating = compareTime
+                            #print("dropped fork " + str((self.identity+1) % int(sys.argv[1])))
+                    else:
+                        continue
+                    #print("dropped fork " + str(self.identity))
+
+    def timeAte(self):
+        print("Philosopher "+str(self.identity)+" ate for "+str(self.timeEating)+" seconds and thought for " + str(self.timeThinking) + " seconds")
+        return [self.timeEating,self.timeThinking]
+
+def main():
+    global PHILOSOPHERS, FORKS
+
+    #create forks
+    for index in range(0,int(sys.argv[1])):
+        FORKS.append(threading.Lock())
+
+    #create philosophers
+    for index in range(0,int(sys.argv[1])):
+        PHILOSOPHERS.append(philosopher(index))
+
+    #let them eat cake
+    totalTime = time()
+    threadList = list()
+    #create list of threads that point to each philosopher's eat method
+    for phil in PHILOSOPHERS:
+        threadList.append(Thread(target = phil.eat))
+    for phil in threadList:
+        #If you remove this setDaemon line the program will never die
+        phil.setDaemon(True)
+        phil.start()
+    #Each philosopher sits in an infinite loop until this LOCK is set to True which turns them all on at the same time. This avoids preference to any philosopher
+    LOCK = True
+    try:
+        while True:
+            sleep(0.1)
+    except KeyboardInterrupt:
+        print('\n')
+        totalEat = 0.0
+        totalThink = 0.0
+        for phil in PHILOSOPHERS:
+            currentPhil = phil.timeAte()
+            totalEat += currentPhil[0]
+            totalThink += currentPhil[1]
+        endTime = time()
+        print("Philosophers ate for a collective: " + str(totalEat) + " seconds")
+        print("Philosophers thought for a collective: " + str(totalThink) + " seconds")
+        print("The philosophers dined for a total of: " + str(endTime-totalTime) + " seconds")
+main()
